@@ -2,6 +2,10 @@ plugins {
     id 'com.android.application'
 }
 
+// CI에서는 실행 번호를 버전 코드로 쓰고, 로컬에서는 1을 쓴다
+def runNumber = System.getenv('GITHUB_RUN_NUMBER')
+def appVersionCode = runNumber ? runNumber.toInteger() : 1
+
 android {
     namespace 'com.example.stockapp'
     compileSdk 34
@@ -10,7 +14,7 @@ android {
         applicationId 'com.example.stockapp'
         minSdk 24
         targetSdk 34
-        versionCode (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+        versionCode appVersionCode
         versionName '1.0'
     }
 
