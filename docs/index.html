@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d4ed8">
+<title>국내주식 분석</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;background:#f3f4f6;color:#111827;padding-bottom:env(safe-area-inset-bottom)}
+header{background:#1d4ed8;color:#fff;padding:14px 16px;position:sticky;top:0;z-index:1}
+header h1{margin:0;font-size:18px}
+header small{opacity:.85;font-size:12px}
+main{padding:12px;max-width:520px;margin:0 auto}
+.card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.rec{border:2px solid #1d4ed8}
+.muted{color:#6b7280;font-size:13px}
+input{width:100%;padding:12px;font-size:16px;border:1px solid #d1d5db;border-radius:10px}
+.list button{display:block;width:100%;text-align:left;padding:10px 4px;border:0;background:none;border-bottom:1px solid #eee;font-size:15px;color:#111827}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td{padding:7px 0;border-bottom:1px solid #f0f0f0}
+td:last-child{text-align:right}
+.ok{color:#059669;font-weight:600}
+.ng{color:#9ca3af}
+.price{font-size:26px;font-weight:700;margin-top:4px}
+.up{color:#dc2626}
+.down{color:#2563eb}
+.btn{margin-top:8px;padding:8px 14px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>국내주식 분석</h1>
+  <small id="updated">데이터 불러오는 중…</small>
+</header>
+<main>
+  <div class="card rec" id="rec"></div>
+  <div class="card">
+    <input id="q" placeholder="종목명 또는 종목코드 검색 (예: 삼성전자, 005930)" autocomplete="off">
+    <div class="list" id="list"></div>
+  </div>
+  <div class="card" id="detail" style="display:none"></div>
+  <p class="muted" id="disc"></p>
+</main>
+<script>
+let DATA = null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => Number(n).toLocaleString('ko-KR');
+const cls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
+const sign = v => (v > 0 ? '+' : '') + v;
+
+function showRec() {
+  const r = DATA.recommendation;
+  if (!r) {
+    $('rec').innerHTML = `<b>오늘의 추천</b><p class="muted">조건을 충족하는 종목이 없어 오늘은 추천이 없습니다.</p>`;
+    return;
+  }
+  $('rec').innerHTML = `
+    <div class="muted">오늘의 추천 · 기준일 ${esc(DATA.base_date)}</div>
+    <div style="font-size:20px;font-weight:700;margin:4px 0">${esc(r.name)} <span class="muted">${esc(r.code)}</span></div>
+    <div>종가 ${fmt(r.close)}원 · 조건 ${r.score}/6 충족</div>
+    <div class="muted">${DATA.horizon_days}거래일 예상 범위(80%): ${fmt(r.range_low)} ~ ${fmt(r.range_high)}원</div>
+    <div class="muted" style="margin-top:6px">충족 조건: ${r.reasons.map(esc).join(', ')}</div>
+    <button class="btn" id="openRec">상세 보기</button>`;
+  $('openRec').onclick = () => show(r.code);
+}
+
+function renderList(q) {
+  const term = q.trim().toLowerCase();
+  const items = DATA.stocks
+    .filter(s => !term || s.name.toLowerCase().includes(term) || s.code.includes(term))
+    .slice(0, 30);
+  $('list').innerHTML = items.map(s => `
+    <button data-code="${esc(s.code)}">${esc(s.name)} <span class="muted">${esc(s.code)}</span>
+      <span class="${cls(s.change_pct)}" style="float:right">${sign(s.change_pct)}%</span></button>`).join('')
+    || '<p class="muted">검색 결과가 없습니다.</p>';
+  $('list').querySelectorAll('button').forEach(b => b.onclick = () => show(b.dataset.code));
+}
+
+function chart(series) {
+  if (!series || series.length < 2) return '';
+  const W = 340, H = 160, P = 6;
+  const vals = series.map(p => p.c);
+  const mn = Math.min(...vals), mx = Math.max(...vals), span = (mx - mn) || 1;
+  const pts = series.map((p, i) => {
+    const x = P + i * (W - 2 * P) / (series.length - 1);
+    const y = P + (mx - p.c) * (H - 2 * P) / span;
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}"><polyline fill="none" stroke="#1d4ed8" stroke-width="2" points="${pts}"/></svg>`;
+}
+
+function show(code) {
+  const s = DATA.stocks.find(x => x.code === code);
+  if (!s) return;
+  const checks = Object.entries(s.checks).map(([k, ok]) =>
+    `<tr><td>${esc(k)}</td><td class="${ok ? 'ok' : 'ng'}">${ok ? '충족' : '미충족'}</td></tr>`).join('');
+  $('detail').style.display = 'block';
+  $('detail').innerHTML = `
+    <div class="muted">${esc(s.code)} · 기준일 ${esc(s.last_date)}</div>
+    <div style="font-size:18px;font-weight:700">${esc(s.name)}</div>
+    <div class="price">${fmt(s.close)}원 <span class="${cls(s.change_pct)}" style="font-size:16px">${sign(s.change_pct)}%</span></div>
+    <div style="margin:10px 0">${chart(s.series)}</div>
+    <table>
+      <tr><td>20일선</td><td>${fmt(s.ma20)}</td></tr>
+      <tr><td>60일선</td><td>${fmt(s.ma60)}</td></tr>
+      <tr><td>RSI(14)</td><td>${s.rsi}</td></tr>
+      <tr><td>MACD 히스토그램</td><td>${s.macd_hist}</td></tr>
+      <tr><td>거래량 비율(20일 평균 대비)</td><td>${s.vol_ratio}배</td></tr>
+      <tr><td>60일 수익률</td><td class="${cls(s.ret60_pct)}">${s.ret60_pct}%</td></tr>
+      <tr><td>${DATA.horizon_days}거래일 예상 범위(80%)</td><td>${fmt(s.range_low)} ~ ${fmt(s.range_high)}</td></tr>
+    </table>
+    <h4 style="margin:14px 0 6px">조건 점검 (${s.score}/6)</h4>
+    <table>${checks}</table>
+    <p class="muted">범위는 최근 20일 변동성이 정규분포를 따른다고 가정한 추정치입니다.</p>`;
+  $('detail').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function init() {
+  try {
+    const res = await fetch('data.json', { cache: 'no-cache' });
+    DATA = await res.json();
+  } catch (e) {
+    $('updated').textContent = '데이터를 불러오지 못했습니다';
+    return;
+  }
+  $('updated').textContent = `갱신 ${DATA.updated_at} · 대상 ${DATA.universe_size}개`;
+  $('disc').textContent = `대상: 시가총액 상위 종목. ${DATA.disclaimer}`;
+  showRec();
+  renderList('');
+  $('q').addEventListener('input', e => renderList(e.target.value));
+}
+
+init();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
