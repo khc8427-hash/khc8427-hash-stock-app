@@ -21,6 +21,8 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: 데이터 갱신
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
         run: python scripts/update_data.py
 
       - name: 데이터 커밋
