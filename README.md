@@ -1,0 +1,1 @@
+# khc8427-hash-stock-app
