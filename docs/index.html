@@ -15,9 +15,10 @@ header h1{margin:0;font-size:18px}
 header small{opacity:.85;font-size:12px}
 main{padding:12px;max-width:520px;margin:0 auto}
 .card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.card h3{margin:0 0 10px;font-size:16px}
 .rec{border:2px solid #1d4ed8}
 .muted{color:#6b7280;font-size:13px}
-input{width:100%;padding:12px;font-size:16px;border:1px solid #d1d5db;border-radius:10px}
+input{width:100%;padding:11px;font-size:16px;border:1px solid #d1d5db;border-radius:10px;margin-bottom:6px}
 .list button{display:block;width:100%;text-align:left;padding:10px 4px;border:0;background:none;border-bottom:1px solid #eee;font-size:15px;color:#111827}
 table{width:100%;border-collapse:collapse;font-size:14px}
 td{padding:7px 0;border-bottom:1px solid #f0f0f0}
@@ -27,7 +28,13 @@ td:last-child{text-align:right}
 .price{font-size:26px;font-weight:700;margin-top:4px}
 .up{color:#dc2626}
 .down{color:#2563eb}
-.btn{margin-top:8px;padding:8px 14px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-size:14px}
+.btn{margin-top:4px;padding:9px 14px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-size:14px}
+.btn-link{color:#1d4ed8;font-size:14px;cursor:pointer}
+.hrow{padding:10px 0;border-bottom:1px solid #f0f0f0;cursor:pointer;font-size:14px;line-height:1.5;position:relative}
+.hrow:last-child{border-bottom:0}
+.del{position:absolute;right:0;top:10px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#6b7280;font-size:12px}
+.sum{background:#f9fafb;border-radius:8px;padding:10px;margin-bottom:8px;font-size:14px}
+details summary{list-style:none}
 </style>
 </head>
 <body>
@@ -37,14 +44,35 @@ td:last-child{text-align:right}
 </header>
 <main>
   <div class="card rec" id="rec"></div>
+
   <div class="card">
+    <h3>보유 종목</h3>
+    <div id="holdingSum"></div>
+    <div id="holdings"></div>
+    <details style="margin-top:8px">
+      <summary class="btn-link">+ 보유 종목 추가</summary>
+      <div style="margin-top:8px">
+        <input id="hName" list="stockList" placeholder="종목명 또는 6자리 코드" autocomplete="off">
+        <datalist id="stockList"></datalist>
+        <input id="hQty" type="number" inputmode="numeric" placeholder="보유 수량 (주)">
+        <input id="hAvg" type="number" inputmode="numeric" placeholder="평균 매입단가 (원)">
+        <button class="btn" id="hAdd">추가</button>
+        <p class="muted">보유 정보는 이 휴대폰에만 저장되며 저장소나 웹에는 올라가지 않습니다.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h3>종목 검색</h3>
     <input id="q" placeholder="종목명 또는 종목코드 검색 (예: 삼성전자, 005930)" autocomplete="off">
     <div class="list" id="list"></div>
   </div>
+
   <div class="card" id="detail" style="display:none"></div>
   <p class="muted" id="disc"></p>
 </main>
 <script>
+const HOLD_KEY = 'myHoldings';
 let DATA = null;
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -52,6 +80,86 @@ const fmt = n => Number(n).toLocaleString('ko-KR');
 const cls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
 const sign = v => (v > 0 ? '+' : '') + v;
 
+/* ---------- 보유 종목 (휴대폰 로컬 저장) ---------- */
+function loadHoldings() {
+  try { return JSON.parse(localStorage.getItem(HOLD_KEY) || '[]'); } catch (e) { return []; }
+}
+function saveHoldings(list) { localStorage.setItem(HOLD_KEY, JSON.stringify(list)); }
+function findStock(code) { return DATA.stocks.find(s => s.code === code); }
+
+function renderHoldings() {
+  const list = loadHoldings();
+  if (!list.length) {
+    $('holdingSum').innerHTML = '';
+    $('holdings').innerHTML = '<p class="muted">등록된 보유 종목이 없습니다. 아래 "+ 보유 종목 추가"를 누르세요.</p>';
+    return;
+  }
+  let totCost = 0, totVal = 0, missing = 0;
+  const rows = list.map(h => {
+    const s = findStock(h.code);
+    const cost = h.qty * h.avg;
+    totCost += cost;
+    if (!s) {
+      missing++;
+      return `<div class="hrow" data-code="${esc(h.code)}">
+        <b>${esc(h.code)}</b> <span class="muted">분석 데이터 없음 (다음 갱신 후 표시)</span>
+        <button class="del" data-del="${esc(h.code)}">삭제</button></div>`;
+    }
+    const val = h.qty * s.close;
+    totVal += val;
+    const pl = val - cost;
+    const rate = cost ? pl / cost * 100 : 0;
+    return `<div class="hrow" data-code="${esc(h.code)}">
+      <div><b>${esc(s.name)}</b> <span class="muted">${esc(s.code)} · ${fmt(h.qty)}주</span></div>
+      <div class="muted">현재가 ${fmt(s.close)}원 · 평균단가 ${fmt(h.avg)}원 · 조건 ${s.score}/6</div>
+      <div><span class="${cls(pl)}">${(pl > 0 ? '+' : '') + fmt(pl)}원 (${(rate > 0 ? '+' : '') + rate.toFixed(2)}%)</span> · 평가금액 ${fmt(val)}원</div>
+      <div class="muted">${DATA.horizon_days}거래일 예상 ${fmt(h.qty * s.range_low)} ~ ${fmt(h.qty * s.range_high)}원</div>
+      <button class="del" data-del="${esc(h.code)}">삭제</button>
+    </div>`;
+  }).join('');
+
+  const pl = totVal - totCost;
+  const totRate = totCost ? pl / totCost * 100 : 0;
+  $('holdingSum').innerHTML = `<div class="sum">
+    <b>합계</b> · 평가 ${fmt(totVal)}원 · 매입 ${fmt(totCost)}원<br>
+    <span class="${cls(pl)}">${(pl > 0 ? '+' : '') + fmt(pl)}원 (${(totRate > 0 ? '+' : '') + totRate.toFixed(2)}%)</span>
+    ${missing ? `<br><span class="muted">분석 데이터가 없는 ${missing}종목은 합계에서 빠졌습니다.</span>` : ''}
+  </div>`;
+  $('holdings').innerHTML = rows;
+  $('holdings').querySelectorAll('.hrow').forEach(div => {
+    div.onclick = e => {
+      if (e.target.dataset.del) { removeHolding(e.target.dataset.del); return; }
+      if (findStock(div.dataset.code)) show(div.dataset.code);
+    };
+  });
+}
+
+function removeHolding(code) {
+  saveHoldings(loadHoldings().filter(h => h.code !== code));
+  renderHoldings();
+}
+
+function resolveTarget(text) {
+  const t = text.trim();
+  const hit = DATA.stocks.find(s => s.code === t || s.name === t);
+  if (hit) return { code: hit.code, name: hit.name };
+  if (/^\d{6}$/.test(t)) return { code: t, name: t };
+  return null;
+}
+
+$('hAdd').onclick = () => {
+  const target = resolveTarget($('hName').value);
+  const qty = Number($('hQty').value), avg = Number($('hAvg').value);
+  if (!target) { alert('종목명 또는 6자리 종목코드를 입력하세요.'); return; }
+  if (!(qty > 0) || !(avg > 0)) { alert('보유 수량과 평균 매입단가를 입력하세요.'); return; }
+  const list = loadHoldings().filter(h => h.code !== target.code);
+  list.push({ code: target.code, qty, avg });
+  saveHoldings(list);
+  $('hName').value = ''; $('hQty').value = ''; $('hAvg').value = '';
+  renderHoldings();
+};
+
+/* ---------- 추천 ---------- */
 function showRec() {
   const r = DATA.recommendation;
   if (!r) {
@@ -68,15 +176,21 @@ function showRec() {
   $('openRec').onclick = () => show(r.code);
 }
 
+/* ---------- 검색 ---------- */
 function renderList(q) {
   const term = q.trim().toLowerCase();
   const items = DATA.stocks
     .filter(s => !term || s.name.toLowerCase().includes(term) || s.code.includes(term))
     .slice(0, 30);
-  $('list').innerHTML = items.map(s => `
+  let html = items.map(s => `
     <button data-code="${esc(s.code)}">${esc(s.name)} <span class="muted">${esc(s.code)}</span>
-      <span class="${cls(s.change_pct)}" style="float:right">${sign(s.change_pct)}%</span></button>`).join('')
-    || '<p class="muted">검색 결과가 없습니다.</p>';
+      <span class="${cls(s.change_pct)}" style="float:right">${sign(s.change_pct)}%</span></button>`).join('');
+  if (!items.length) {
+    html = /^\d{6}$/.test(term)
+      ? `<p class="muted">${esc(term)}은(는) 분석 목록에 없습니다. 분석 목록은 ${DATA.universe_size}개 종목입니다.</p>`
+      : '<p class="muted">검색 결과가 없습니다. 분석 목록에 있는 종목만 검색됩니다.</p>';
+  }
+  $('list').innerHTML = html;
   $('list').querySelectorAll('button').forEach(b => b.onclick = () => show(b.dataset.code));
 }
 
@@ -94,8 +208,12 @@ function chart(series) {
 }
 
 function show(code) {
-  const s = DATA.stocks.find(x => x.code === code);
+  const s = findStock(code);
   if (!s) return;
+  const held = loadHoldings().find(h => h.code === code);
+  const heldLine = held
+    ? `<div class="sum">보유 중: ${fmt(held.qty)}주 · 평균단가 ${fmt(held.avg)}원 · 평가손익 <span class="${cls((s.close - held.avg) * held.qty)}">${((s.close - held.avg) * held.qty > 0 ? '+' : '') + fmt((s.close - held.avg) * held.qty)}원</span></div>`
+    : '';
   const checks = Object.entries(s.checks).map(([k, ok]) =>
     `<tr><td>${esc(k)}</td><td class="${ok ? 'ok' : 'ng'}">${ok ? '충족' : '미충족'}</td></tr>`).join('');
   $('detail').style.display = 'block';
@@ -103,6 +221,7 @@ function show(code) {
     <div class="muted">${esc(s.code)} · 기준일 ${esc(s.last_date)}</div>
     <div style="font-size:18px;font-weight:700">${esc(s.name)}</div>
     <div class="price">${fmt(s.close)}원 <span class="${cls(s.change_pct)}" style="font-size:16px">${sign(s.change_pct)}%</span></div>
+    ${heldLine}
     <div style="margin:10px 0">${chart(s.series)}</div>
     <table>
       <tr><td>20일선</td><td>${fmt(s.ma20)}</td></tr>
@@ -119,6 +238,7 @@ function show(code) {
   $('detail').scrollIntoView({ behavior: 'smooth' });
 }
 
+/* ---------- 시작 ---------- */
 async function init() {
   try {
     const res = await fetch('data.json', { cache: 'no-cache' });
@@ -127,9 +247,11 @@ async function init() {
     $('updated').textContent = '데이터를 불러오지 못했습니다';
     return;
   }
-  $('updated').textContent = `갱신 ${DATA.updated_at} · 대상 ${DATA.universe_size}개`;
-  $('disc').textContent = `대상: 시가총액 상위 종목. ${DATA.disclaimer}`;
+  $('updated').textContent = `갱신 ${DATA.updated_at} · 분석 ${DATA.universe_size}개 종목`;
+  $('disc').textContent = DATA.disclaimer;
+  $('stockList').innerHTML = DATA.stocks.map(s => `<option value="${esc(s.name)}">`).join('');
   showRec();
+  renderHoldings();
   renderList('');
   $('q').addEventListener('input', e => renderList(e.target.value));
 }
