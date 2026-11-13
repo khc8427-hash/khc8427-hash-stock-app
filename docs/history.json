@@ -1,6 +1,22 @@
 [
  {
   "date": "2026-11-13",
-  "recommendation": null
+  "recommendation": {
+   "code": "064400",
+   "name": "LG씨엔에스",
+   "close": 78500,
+   "score": 5,
+   "rsi": 56.4,
+   "ret60_pct": -0.74,
+   "range_low": 69934,
+   "range_high": 88115,
+   "reasons": [
+    "종가가 20일선 위",
+    "20일선이 60일선 위",
+    "RSI 40~65 (과열·침체 아님)",
+    "MACD 히스토그램 양수",
+    "거래량 1.2배 이상 증가 & 상승 마감"
+   ]
+  }
  }
 ]
